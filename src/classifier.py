@@ -1,12 +1,10 @@
 import numpy as np
 import pandas as pd
 from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics.pairwise import cosine_similarity
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -49,67 +47,6 @@ class SimpleNN(nn.Module):
         return self.network(x)
 
 
-class DeepNN(nn.Module):
-    def __init__(self, input_dim):
-        super(DeepNN, self).__init__()
-        self.network = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Dropout(0.4),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        return self.network(x)
-
-
-class SiameseNN(nn.Module):
-    def __init__(self, input_dim):
-        super(SiameseNN, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, 64),
-            nn.ReLU()
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        mid = x.shape[1] // 2
-        vec1 = x[:, :mid]
-        vec2 = x[:, mid:]
-
-        enc1 = self.encoder(vec1)
-        enc2 = self.encoder(vec2)
-
-        combined = torch.cat([enc1, enc2], dim=1)
-        return self.classifier(combined)
-
-
 def train_neural_network(model, train_loader, test_loader=None, epochs=50, lr=0.001, device='cpu'):
     model = model.to(device)
     criterion = nn.BCELoss()
@@ -118,7 +55,6 @@ def train_neural_network(model, train_loader, test_loader=None, epochs=50, lr=0.
                                                      factor=0.5, patience=5)
 
     for epoch in range(epochs):
-        # Training
         model.train()
         total_loss = 0
         for features, labels in train_loader:
@@ -135,7 +71,6 @@ def train_neural_network(model, train_loader, test_loader=None, epochs=50, lr=0.
         avg_loss = total_loss / len(train_loader)
         scheduler.step(avg_loss)
 
-        # Evaluation
         if (epoch + 1) % 10 == 0:
             if test_loader is not None:
                 model.eval()
@@ -196,7 +131,7 @@ def evaluate_model(y_true, y_pred):
 
 def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     print("=" * 60)
-    print("저자 동일성 분류 모델 학습 시작")
+    print("저자 동일성 분류 모델 학습 시작 (Selected 3 Models)")
     print("=" * 60)
 
     print(f"\n학습 데이터 크기: {len(train_df)} samples")
@@ -221,52 +156,10 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     print(f"\n사용 디바이스: {device}")
 
     # ========================================
-    # 1. 코사인 유사도 기반
+    # 1. SVM
     # ========================================
     print("\n" + "=" * 60)
-    print("1. 코사인 유사도 분류기 학습")
-    print("=" * 60)
-
-    train_cos_sim = cosine_similarity(train_features['vec1'], train_features['vec2']).diagonal()
-    test_cos_sim = cosine_similarity(test_features['vec1'], test_features['vec2']).diagonal()
-
-    best_threshold = 0.5
-    best_acc = 0
-    for threshold in np.linspace(0, 1, 101):
-        pred = (train_cos_sim >= threshold).astype(int)
-        acc = np.mean(pred == y_train)
-        if acc > best_acc:
-            best_acc = acc
-            best_threshold = threshold
-
-    train_pred = (train_cos_sim >= best_threshold).astype(int)
-    test_pred = (test_cos_sim >= best_threshold).astype(int)
-
-    train_metrics = evaluate_model(y_train, train_pred)
-    test_metrics = evaluate_model(y_test, test_pred)
-
-    models['cosine_similarity'] = {
-        'threshold': best_threshold,
-        'train_metrics': train_metrics,
-        'test_metrics': test_metrics
-    }
-
-    print(f"최적 Threshold: {best_threshold:.4f}")
-    print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
-
-    results.append({
-        'model': 'Cosine Similarity',
-        'train_acc': train_metrics['accuracy'],
-        'test_acc': test_metrics['accuracy'],
-        'train_f1': train_metrics['f1'],
-        'test_f1': test_metrics['f1']
-    })
-
-    # ========================================
-    # 2. SVM
-    # ========================================
-    print("\n" + "=" * 60)
-    print("2. SVM 분류기 학습")
+    print("1. SVM 분류기 학습")
     print("=" * 60)
 
     scaler_svm = StandardScaler()
@@ -290,6 +183,7 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     }
 
     print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
+    print(f"Train F1: {train_metrics['f1']:.4f} | Test F1: {test_metrics['f1']:.4f}")
 
     results.append({
         'model': 'SVM',
@@ -300,81 +194,10 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     })
 
     # ========================================
-    # 3. Random Forest
+    # 2. Naive Bayes
     # ========================================
     print("\n" + "=" * 60)
-    print("3. Random Forest 분류기 학습")
-    print("=" * 60)
-
-    rf_model = RandomForestClassifier(n_estimators=200, max_depth=20,
-                                      min_samples_split=10, random_state=42,
-                                      n_jobs=-1)
-    rf_model.fit(train_features['combined'], y_train)
-
-    train_pred = rf_model.predict(train_features['combined'])
-    test_pred = rf_model.predict(test_features['combined'])
-
-    train_metrics = evaluate_model(y_train, train_pred)
-    test_metrics = evaluate_model(y_test, test_pred)
-
-    models['random_forest'] = {
-        'model': rf_model,
-        'train_metrics': train_metrics,
-        'test_metrics': test_metrics
-    }
-
-    print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
-
-    results.append({
-        'model': 'Random Forest',
-        'train_acc': train_metrics['accuracy'],
-        'test_acc': test_metrics['accuracy'],
-        'train_f1': train_metrics['f1'],
-        'test_f1': test_metrics['f1']
-    })
-
-    # ========================================
-    # 4. Logistic Regression
-    # ========================================
-    print("\n" + "=" * 60)
-    print("4. Logistic Regression 분류기 학습")
-    print("=" * 60)
-
-    scaler_lr = StandardScaler()
-    X_train_lr = scaler_lr.fit_transform(train_features['combined'])
-    X_test_lr = scaler_lr.transform(test_features['combined'])
-
-    lr_model = LogisticRegression(max_iter=1000, C=1.0, random_state=42)
-    lr_model.fit(X_train_lr, y_train)
-
-    train_pred = lr_model.predict(X_train_lr)
-    test_pred = lr_model.predict(X_test_lr)
-
-    train_metrics = evaluate_model(y_train, train_pred)
-    test_metrics = evaluate_model(y_test, test_pred)
-
-    models['logistic_regression'] = {
-        'model': lr_model,
-        'scaler': scaler_lr,
-        'train_metrics': train_metrics,
-        'test_metrics': test_metrics
-    }
-
-    print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
-
-    results.append({
-        'model': 'Logistic Regression',
-        'train_acc': train_metrics['accuracy'],
-        'test_acc': test_metrics['accuracy'],
-        'train_f1': train_metrics['f1'],
-        'test_f1': test_metrics['f1']
-    })
-
-    # ========================================
-    # 5. Naive Bayes
-    # ========================================
-    print("\n" + "=" * 60)
-    print("5. Gaussian Naive Bayes 분류기 학습")
+    print("2. Gaussian Naive Bayes 분류기 학습")
     print("=" * 60)
 
     nb_model = GaussianNB()
@@ -393,6 +216,7 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     }
 
     print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
+    print(f"Train F1: {train_metrics['f1']:.4f} | Test F1: {test_metrics['f1']:.4f}")
 
     results.append({
         'model': 'Naive Bayes',
@@ -403,10 +227,10 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     })
 
     # ========================================
-    # 6. Simple Neural Network
+    # 3. Simple Neural Network
     # ========================================
     print("\n" + "=" * 60)
-    print("6. Simple Neural Network 학습")
+    print("3. Simple Neural Network 학습")
     print("=" * 60)
 
     scaler_nn = StandardScaler()
@@ -442,99 +266,10 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     }
 
     print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
+    print(f"Train F1: {train_metrics['f1']:.4f} | Test F1: {test_metrics['f1']:.4f}")
 
     results.append({
         'model': 'Simple NN',
-        'train_acc': train_metrics['accuracy'],
-        'test_acc': test_metrics['accuracy'],
-        'train_f1': train_metrics['f1'],
-        'test_f1': test_metrics['f1']
-    })
-
-    # ========================================
-    # 7. Deep Neural Network
-    # ========================================
-    print("\n" + "=" * 60)
-    print("7. Deep Neural Network 학습")
-    print("=" * 60)
-
-    deep_nn = DeepNN(X_train_nn.shape[1])
-    deep_nn = train_neural_network(deep_nn, train_loader, test_loader, epochs=50,
-                                   lr=0.0005, device=device)
-
-    # 평가
-    deep_nn.eval()
-    with torch.no_grad():
-        train_pred_prob = deep_nn(torch.FloatTensor(X_train_nn).to(device)).squeeze().cpu().numpy()
-        test_pred_prob = deep_nn(torch.FloatTensor(X_test_nn).to(device)).squeeze().cpu().numpy()
-
-    train_pred = (train_pred_prob >= 0.5).astype(int)
-    test_pred = (test_pred_prob >= 0.5).astype(int)
-
-    train_metrics = evaluate_model(y_train, train_pred)
-    test_metrics = evaluate_model(y_test, test_pred)
-
-    models['deep_nn'] = {
-        'model': deep_nn.cpu(),
-        'scaler': scaler_nn,
-        'train_metrics': train_metrics,
-        'test_metrics': test_metrics
-    }
-
-    print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
-
-    results.append({
-        'model': 'Deep NN',
-        'train_acc': train_metrics['accuracy'],
-        'test_acc': test_metrics['accuracy'],
-        'train_f1': train_metrics['f1'],
-        'test_f1': test_metrics['f1']
-    })
-
-    # ========================================
-    # 8. Siamese Neural Network
-    # ========================================
-    print("\n" + "=" * 60)
-    print("8. Siamese Neural Network 학습")
-    print("=" * 60)
-
-    scaler_siamese = StandardScaler()
-    X_train_siamese = scaler_siamese.fit_transform(train_features['concat'])
-    X_test_siamese = scaler_siamese.transform(test_features['concat'])
-
-    dataset_train_siamese = AuthorshipDataset(X_train_siamese, y_train)
-    dataset_test_siamese = AuthorshipDataset(X_test_siamese, y_test)
-    train_loader_siamese = DataLoader(dataset_train_siamese, batch_size=32, shuffle=True)
-    test_loader_siamese = DataLoader(dataset_test_siamese, batch_size=32, shuffle=False)
-
-    vec_dim = train_features['vec1'].shape[1]
-    siamese_nn = SiameseNN(vec_dim)
-    siamese_nn = train_neural_network(siamese_nn, train_loader_siamese, test_loader_siamese,
-                                      epochs=50, lr=0.001, device=device)
-
-    # 평가
-    siamese_nn.eval()
-    with torch.no_grad():
-        train_pred_prob = siamese_nn(torch.FloatTensor(X_train_siamese).to(device)).squeeze().cpu().numpy()
-        test_pred_prob = siamese_nn(torch.FloatTensor(X_test_siamese).to(device)).squeeze().cpu().numpy()
-
-    train_pred = (train_pred_prob >= 0.5).astype(int)
-    test_pred = (test_pred_prob >= 0.5).astype(int)
-
-    train_metrics = evaluate_model(y_train, train_pred)
-    test_metrics = evaluate_model(y_test, test_pred)
-
-    models['siamese_nn'] = {
-        'model': siamese_nn.cpu(),
-        'scaler': scaler_siamese,
-        'train_metrics': train_metrics,
-        'test_metrics': test_metrics
-    }
-
-    print(f"Train Accuracy: {train_metrics['accuracy']:.4f} | Test Accuracy: {test_metrics['accuracy']:.4f}")
-
-    results.append({
-        'model': 'Siamese NN',
         'train_acc': train_metrics['accuracy'],
         'test_acc': test_metrics['accuracy'],
         'train_f1': train_metrics['f1'],
@@ -574,85 +309,37 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=False):
     train_predictions_df = train_df.copy()
     train_predictions_df['true_label'] = y_train
 
-    # 1. Cosine Similarity
-    train_cos_sim = cosine_similarity(train_features['vec1'], train_features['vec2']).diagonal()
-    train_predictions_df['pred_cosine'] = (train_cos_sim >= models['cosine_similarity']['threshold']).astype(int)
-
-    # 2. SVM
+    # 1. SVM
     X_train_svm = models['svm']['scaler'].transform(train_features['combined'])
     train_predictions_df['pred_svm'] = models['svm']['model'].predict(X_train_svm)
 
-    # 3. Random Forest
-    train_predictions_df['pred_rf'] = models['random_forest']['model'].predict(train_features['combined'])
-
-    # 4. Logistic Regression
-    X_train_lr = models['logistic_regression']['scaler'].transform(train_features['combined'])
-    train_predictions_df['pred_lr'] = models['logistic_regression']['model'].predict(X_train_lr)
-
-    # 5. Naive Bayes
+    # 2. Naive Bayes
     train_predictions_df['pred_nb'] = models['naive_bayes']['model'].predict(train_features['combined'])
 
-    # 6. Simple NN
+    # 3. Simple NN
     X_train_nn = models['simple_nn']['scaler'].transform(train_features['combined'])
     models['simple_nn']['model'].eval()
     with torch.no_grad():
         pred_simple_nn = models['simple_nn']['model'](torch.FloatTensor(X_train_nn)).squeeze().numpy()
     train_predictions_df['pred_simple_nn'] = (pred_simple_nn >= 0.5).astype(int)
 
-    # 7. Deep NN
-    models['deep_nn']['model'].eval()
-    with torch.no_grad():
-        pred_deep_nn = models['deep_nn']['model'](torch.FloatTensor(X_train_nn)).squeeze().numpy()
-    train_predictions_df['pred_deep_nn'] = (pred_deep_nn >= 0.5).astype(int)
-
-    # 8. Siamese NN
-    X_train_siamese = models['siamese_nn']['scaler'].transform(train_features['concat'])
-    models['siamese_nn']['model'].eval()
-    with torch.no_grad():
-        pred_siamese = models['siamese_nn']['model'](torch.FloatTensor(X_train_siamese)).squeeze().numpy()
-    train_predictions_df['pred_siamese_nn'] = (pred_siamese >= 0.5).astype(int)
-
     # Test 예측
     test_predictions_df = test_df.copy()
     test_predictions_df['true_label'] = y_test
 
-    # 1. Cosine Similarity
-    test_cos_sim = cosine_similarity(test_features['vec1'], test_features['vec2']).diagonal()
-    test_predictions_df['pred_cosine'] = (test_cos_sim >= models['cosine_similarity']['threshold']).astype(int)
-
-    # 2. SVM
+    # 1. SVM
     X_test_svm = models['svm']['scaler'].transform(test_features['combined'])
     test_predictions_df['pred_svm'] = models['svm']['model'].predict(X_test_svm)
 
-    # 3. Random Forest
-    test_predictions_df['pred_rf'] = models['random_forest']['model'].predict(test_features['combined'])
-
-    # 4. Logistic Regression
-    X_test_lr = models['logistic_regression']['scaler'].transform(test_features['combined'])
-    test_predictions_df['pred_lr'] = models['logistic_regression']['model'].predict(X_test_lr)
-
-    # 5. Naive Bayes
+    # 2. Naive Bayes
     test_predictions_df['pred_nb'] = models['naive_bayes']['model'].predict(test_features['combined'])
 
-    # 6. Simple NN
+    # 3. Simple NN
     X_test_nn = models['simple_nn']['scaler'].transform(test_features['combined'])
     models['simple_nn']['model'].eval()
     with torch.no_grad():
         pred_simple_nn = models['simple_nn']['model'](torch.FloatTensor(X_test_nn)).squeeze().numpy()
     test_predictions_df['pred_simple_nn'] = (pred_simple_nn >= 0.5).astype(int)
-
-    # 7. Deep NN
-    models['deep_nn']['model'].eval()
-    with torch.no_grad():
-        pred_deep_nn = models['deep_nn']['model'](torch.FloatTensor(X_test_nn)).squeeze().numpy()
-    test_predictions_df['pred_deep_nn'] = (pred_deep_nn >= 0.5).astype(int)
-
-    # 8. Siamese NN
-    X_test_siamese = models['siamese_nn']['scaler'].transform(test_features['concat'])
-    models['siamese_nn']['model'].eval()
-    with torch.no_grad():
-        pred_siamese = models['siamese_nn']['model'](torch.FloatTensor(X_test_siamese)).squeeze().numpy()
-    test_predictions_df['pred_siamese_nn'] = (pred_siamese >= 0.5).astype(int)
 
     print(f"\n✓ Train 예측 DataFrame 생성 완료: {train_predictions_df.shape}")
     print(f"✓ Test 예측 DataFrame 생성 완료: {test_predictions_df.shape}")
