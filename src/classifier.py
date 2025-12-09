@@ -225,7 +225,7 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=True):
 
     models['xgboost'] = xgb_model
     results.append({
-        'model': 'LightGBM',
+        'model': 'xgboost',
         'train_acc': metrics_train['accuracy'],
         'test_acc': metrics_test['accuracy'],
         'train_precision': metrics_train['precision'],
@@ -260,7 +260,7 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=True):
 
     models['catboost'] = cat_model
     results.append({
-        'model': 'LightGBM',
+        'model': 'catboost',
         'train_acc': metrics_train['accuracy'],
         'test_acc': metrics_test['accuracy'],
         'train_precision': metrics_train['precision'],
@@ -302,7 +302,7 @@ def train_authorship_classifiers(train_df, test_df, use_gpu=True):
 
     models['simple_nn'] = nn_model
     results.append({
-        'model': 'LightGBM',
+        'model': 'simple_nn',
         'train_acc': metrics_train['accuracy'],
         'test_acc': metrics_test['accuracy'],
         'train_precision': metrics_train['precision'],
